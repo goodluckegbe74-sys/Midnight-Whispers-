@@ -1,0 +1,295 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MidnightWhispers</title>
+<style>
+body{
+  margin:0;
+  background:#0b0b14;
+  color:white;
+  font-family:Segoe UI, sans-serif;
+}
+header{
+  padding:20px;
+  text-align:center;
+  font-size:30px;
+  background:linear-gradient(90deg,#1a1a2e,#16213e);
+}
+.container{padding:20px;}
+.card{
+  background:#151528;
+  padding:15px;
+  border-radius:10px;
+  margin-bottom:15px;
+  box-shadow:0 0 20px rgba(128,0,255,0.3);
+}
+button{
+  background:#6a00ff;
+  border:none;
+  padding:8px 12px;
+  color:white;
+  border-radius:5px;
+  cursor:pointer;
+  margin-right:5px;
+}
+input,textarea,select{
+  width:100%;
+  margin:5px 0;
+  padding:8px;
+  background:#1c1c2e;
+  border:none;
+  color:white;
+  border-radius:5px;
+}
+.hidden{display:none;}
+.small{font-size:12px;color:#aaa;}
+#storyView{
+  display:none;
+}
+.delete-btn{
+  background:#ff4444;
+}
+.back-btn{
+  background:#444;
+  margin-bottom:20px;
+}
+</style>
+</head>
+<body>
+
+<header>🌙 MidnightWhispers</header>
+
+<div class="container" id="mainView">
+
+<input id="search" placeholder="Search stories..." onkeyup="renderStories()">
+
+<div id="categories"></div>
+
+<h2>Stories</h2>
+<div id="stories"></div>
+
+<hr>
+
+<h2>Admin Login</h2>
+<!-- FIXED: Changed type from "text" to "email" for better security (and mobile keyboards) -->
+<input id="adminEmail" type="email" placeholder="Email">
+<input id="adminPass" type="password" placeholder="Password">
+<button onclick="adminLogin()">Login</button>
+
+<div id="adminPanel" class="hidden">
+  <h2>Create Story</h2>
+  <input id="newTitle" placeholder="Title">
+  <textarea id="newDesc" placeholder="Description"></textarea>
+  <select id="newCategory">
+    <option>Romance</option>
+    <option>High School Drama</option>
+    <option>Supernatural</option>
+    <option>Action</option>
+    <option>Emotional</option>
+  </select>
+  <button onclick="createStory()">Publish Story</button>
+  
+  <!-- NEW: Added logout button -->
+  <button onclick="adminLogout()" style="background:#444; margin-left:10px;">Logout</button>
+</div>
+
+</div>
+
+<!-- NEW: Separate container for story view (doesn't replace whole page) -->
+<div class="container" id="storyView">
+  <button class="back-btn" onclick="goBack()">← Back to Stories</button>
+  <div id="storyContent"></div>
+</div>
+
+<script>
+let ADMIN_EMAIL="admin@midnight.com";
+let ADMIN_PASS="123456";
+let isAdmin = false;
+
+// Initialize storage
+if(!localStorage.getItem("stories")){
+  localStorage.setItem("stories",JSON.stringify([]));
+}
+
+function getStories(){
+  return JSON.parse(localStorage.getItem("stories"));
+}
+
+function saveStories(data){
+  localStorage.setItem("stories",JSON.stringify(data));
+}
+
+function renderStories(){
+  let container=document.getElementById("stories");
+  container.innerHTML="";
+  let search=document.getElementById("search").value.toLowerCase();
+  let stories=getStories();
+
+  stories.sort((a,b)=>b.likes-a.likes);
+
+  stories.forEach((story,index)=>{
+    if(story.title.toLowerCase().includes(search)){
+      container.innerHTML+=`
+      <div class="card">
+        <h3>${story.title}</h3>
+        <div class="small">${story.category}</div>
+        <p>${story.description}</p>
+        <button onclick="likeStory(${index})">❤️ ${story.likes}</button>
+        <button onclick="openStory(${index})">Read</button>
+        ${isAdmin ? `<button class="delete-btn" onclick="deleteStory(${index})">Delete</button>` : ''}
+      </div>
+      `;
+    }
+  });
+}
+
+function likeStory(index){
+  let stories=getStories();
+  stories[index].likes++;
+  saveStories(stories);
+  renderStories();
+}
+
+// NEW: Delete story function
+function deleteStory(index){
+  if(confirm("Delete this story permanently?")){
+    let stories=getStories();
+    stories.splice(index,1);
+    saveStories(stories);
+    renderStories();
+  }
+}
+
+function createStory(){
+  let stories=getStories();
+  stories.push({
+    title:newTitle.value,
+    description:newDesc.value,
+    category:newCategory.value,
+    likes:0,
+    chapters:[]
+  });
+  saveStories(stories);
+  
+  // Clear form
+  newTitle.value="";
+  newDesc.value="";
+  newCategory.selectedIndex=0;
+  
+  renderStories();
+  alert("Story Published!");
+}
+
+// FIXED: Now uses view switching instead of replacing entire page
+function openStory(index){
+  let stories=getStories();
+  let story=stories[index];
+  
+  document.getElementById("mainView").style.display="none";
+  document.getElementById("storyView").style.display="block";
+  
+  let content=`
+  <h2>${story.title}</h2>
+  <div class="small">${story.category}</div>
+  <p>${story.description}</p>
+  <hr>
+  <h3>Chapters</h3>
+  `;
+  
+  if(story.chapters.length===0){
+    content+=`<p class="small">No chapters yet.</p>`;
+  }
+  
+  story.chapters.forEach((ch,i)=>{
+    content+=`
+    <div class="card">
+      <h4>${ch.title}</h4>
+      <p>${ch.content}</p>
+      <button onclick="likeChapter(${index},${i})">❤️ ${ch.likes}</button>
+      <h5>Comments</h5>
+      ${ch.comments.map(c=>`<div class="small">${c}</div>`).join("") || '<div class="small">No comments yet</div>'}
+      <input placeholder="Add comment..." onkeydown="if(event.key==='Enter'){addComment(${index},${i},this.value)}">
+    </div>
+    `;
+  });
+
+  if(isAdmin){
+    content+=`
+    <hr>
+    <h3>Add Chapter</h3>
+    <input id="chapterTitle" placeholder="Chapter Title">
+    <textarea id="chapterContent" placeholder="Chapter Content"></textarea>
+    <button onclick="addChapter(${index})">Add Chapter</button>
+    `;
+  }
+
+  document.getElementById("storyContent").innerHTML=content;
+  window.scrollTo(0,0);
+}
+
+// NEW: Back button function
+function goBack(){
+  document.getElementById("storyView").style.display="none";
+  document.getElementById("mainView").style.display="block";
+  renderStories(); // Refresh in case of changes
+}
+
+function addChapter(index){
+  let stories=getStories();
+  stories[index].chapters.push({
+    title:chapterTitle.value,
+    content:chapterContent.value,
+    likes:0,
+    comments:[]
+  });
+  saveStories(stories);
+  
+  // Refresh the story view
+  openStory(index);
+}
+
+function likeChapter(s,c){
+  let stories=getStories();
+  stories[s].chapters[c].likes++;
+  saveStories(stories);
+  openStory(s); // Refresh instead of reload
+}
+
+function addComment(s,c,text){
+  if(text.trim()=="")return;
+  let stories=getStories();
+  stories[s].chapters[c].comments.push(text);
+  saveStories(stories);
+  openStory(s); // Refresh instead of reload
+}
+
+function adminLogin(){
+  if(adminEmail.value===ADMIN_EMAIL && adminPass.value===ADMIN_PASS){
+    isAdmin = true;
+    document.getElementById("adminPanel").classList.remove("hidden");
+    // Clear password for security
+    adminPass.value="";
+    alert("Admin Logged In");
+    renderStories(); // Re-render to show delete buttons
+  }else{
+    alert("Wrong credentials");
+  }
+}
+
+// NEW: Logout function
+function adminLogout(){
+  isAdmin = false;
+  document.getElementById("adminPanel").classList.add("hidden");
+  adminEmail.value="";
+  adminPass.value="";
+  renderStories(); // Re-render to hide delete buttons
+  alert("Logged out");
+}
+
+renderStories();
+</script>
+
+</body>
+</html>
+
